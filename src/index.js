@@ -1,50 +1,79 @@
 import TelegramBot from 'node-telegram-bot-api';
 import { config } from './config.js';
-import { groupManager } from './utils/groupManager.js';
-import { createWelcomeMessage, createNotificationMessage } from './utils/messageHandler.js';
+import { conversationManager } from './utils/conversationManager.js';
+import { createWelcomeMessage, createSalesNotification } from './utils/messageHandler.js';
 
 const bot = new TelegramBot(config.botToken, { polling: true });
 
 // Start command handler
 bot.onText(/\/start/, async (msg) => {
   const userId = msg.from.id;
-  const username = msg.from.username || msg.from.first_name;
-
-  // Check if user already has a group
-  if (groupManager.hasGroup(userId)) {
-    return bot.sendMessage(userId, "You already have an active conversation!");
-  }
+  const userInfo = {
+    userId: userId,
+    firstName: msg.from.first_name,
+    username: msg.from.username,
+    languageCode: msg.from.language_code
+  };
 
   try {
-    // Create a new group
-    const group = await bot.createNewGroup(`Sales Chat - ${username}`, [
-      userId.toString(),
-      config.salesId,
-      config.adminId
-    ]);
+    // Check if user is already in a conversation
+    if (conversationManager.isInConversation(userId)) {
+      return bot.sendMessage(userId, "You already have an active conversation!");
+    }
 
-    // Store the group information
-    groupManager.addGroup(userId, group.id);
+    // Start new conversation
+    conversationManager.startConversation(userId, userInfo);
 
-    // Send welcome messages
-    await bot.sendMessage(group.id, createWelcomeMessage(username));
-    
+    // Send welcome message to user
+    await bot.sendMessage(userId, createWelcomeMessage(userInfo.firstName));
+
     // Notify sales and admin
-    const notification = createNotificationMessage(username);
+    const notification = createSalesNotification(userInfo);
     await bot.sendMessage(config.salesId, notification);
     await bot.sendMessage(config.adminId, notification);
 
   } catch (error) {
-    console.error('Error creating group:', error);
-    await bot.sendMessage(userId, "Sorry, there was an error creating the conversation. Please try again later.");
+    console.error('Error starting conversation:', error);
+    await bot.sendMessage(userId, "Sorry, there was an error starting the conversation. Please try again later.");
   }
 });
 
-// Handle messages in groups
+// Handle all messages
 bot.on('message', async (msg) => {
-  if (msg.chat.type === 'group' || msg.chat.type === 'supergroup') {
-    // Handle group messages if needed
-    console.log(`Message in group ${msg.chat.id} from ${msg.from.id}: ${msg.text}`);
+  if (msg.text === '/start') return; // Skip /start commands as they're handled above
+
+  const userId = msg.from.id;
+  const messageText = msg.text || 'Media message';
+  const messageId = msg.message_id;
+
+  try {
+    // Forward messages based on sender
+    if (userId.toString() === config.salesId) {
+      // Sales rep sending message - forward to user and admin
+      const conversation = conversationManager.getConversationInfo(msg.reply_to_message?.text);
+      if (conversation) {
+        await bot.copyMessage(conversation.userId, msg.chat.id, messageId);
+        await bot.copyMessage(config.adminId, msg.chat.id, messageId);
+      }
+    } else if (userId.toString() === config.adminId) {
+      // Admin sending message - forward to user and sales
+      const conversation = conversationManager.getConversationInfo(msg.reply_to_message?.text);
+      if (conversation) {
+        await bot.copyMessage(conversation.userId, msg.chat.id, messageId);
+        await bot.copyMessage(config.salesId, msg.chat.id, messageId);
+      }
+    } else {
+      // User sending message - forward to sales and admin
+      if (conversationManager.isInConversation(userId)) {
+        await bot.copyMessage(config.salesId, msg.chat.id, messageId);
+        await bot.copyMessage(config.adminId, msg.chat.id, messageId);
+      } else {
+        await bot.sendMessage(userId, "Please start a conversation first by clicking /start");
+      }
+    }
+  } catch (error) {
+    console.error('Error handling message:', error);
+    await bot.sendMessage(userId, "Sorry, there was an error processing your message. Please try again.");
   }
 });
 
