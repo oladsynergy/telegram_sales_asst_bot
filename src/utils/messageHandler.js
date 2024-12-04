@@ -3,7 +3,7 @@ export const createWelcomeMessage = (username) => {
 };
 
 export const createSalesNotification = (userInfo) => {
-  return `🔔 New conversation started!\n\nUser Details:\nName: ${userInfo.firstName}\nUsername: ${userInfo.username || 'Not provided'}\nID: ${userInfo.userId}`;
+  return `🔔 New conversation started!\n\nUser Details:\nName: ${userInfo.firstName}\nUsername: @${userInfo.username}\nID: ${userInfo.userId}\n\nReply to this message to communicate with the user.`;
 };
 
 export const createForwardNotice = (fromId, toId) => {

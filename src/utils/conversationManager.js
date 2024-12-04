@@ -5,29 +5,37 @@ class ConversationManager {
   }
 
   startConversation(userId, userInfo) {
-    this.conversations.set(userId, {
-      userId,
+    const stringUserId = userId.toString();
+    this.conversations.set(stringUserId, {
+      userId: stringUserId,
       userInfo,
       startTime: new Date(),
       isActive: true
     });
-    this.userStatus.set(userId, 'active');
+    this.userStatus.set(stringUserId, 'active');
+    console.log(`Conversation started for user ${stringUserId}`);
   }
 
   isInConversation(userId) {
-    return this.userStatus.get(userId) === 'active';
+    const stringUserId = userId.toString();
+    const status = this.userStatus.get(stringUserId) === 'active';
+    console.log(`Checking conversation status for ${stringUserId}: ${status}`);
+    return status;
   }
 
   getConversationInfo(userId) {
-    return this.conversations.get(userId);
+    const stringUserId = userId.toString();
+    return this.conversations.get(stringUserId);
   }
 
   endConversation(userId) {
-    this.userStatus.set(userId, 'inactive');
-    const conversation = this.conversations.get(userId);
+    const stringUserId = userId.toString();
+    this.userStatus.set(stringUserId, 'inactive');
+    const conversation = this.conversations.get(stringUserId);
     if (conversation) {
       conversation.isActive = false;
     }
+    console.log(`Conversation ended for user ${stringUserId}`);
   }
 }
 
