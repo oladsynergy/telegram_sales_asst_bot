@@ -1,55 +1,42 @@
-import TelegramBot from 'node-telegram-bot-api';
+import { bot } from './bot.js';
 import { config } from './config.js';
 import { conversationManager } from './utils/conversationManager.js';
+import { MessageForwarder } from './utils/messageForwarder.js';
 import { createWelcomeMessage, createSalesNotification } from './utils/messageHandler.js';
 
-// Initialize bot with polling
-const bot = new TelegramBot(config.botToken, { polling: true });
-
-// Debug logging for config values
-console.log('Sales ID:', config.salesId);
-console.log('Admin ID:', config.adminId);
+// Debug logging
+console.log('Bot initialized with config:', {
+  salesId: config.salesId,
+  adminId: config.adminId
+});
 
 // Start command handler
 bot.onText(/\/start/, async (msg) => {
-  const userId = msg.from.id;
+  const userId = msg.from.id.toString();
   const userInfo = {
-    userId: userId,
+    userId,
     firstName: msg.from.first_name || 'User',
-    username: msg.from.username || 'Unknown',
-    languageCode: msg.from.language_code
+    username: msg.from.username || 'Unknown'
   };
 
   try {
-    // Check if user is already in a conversation
     if (conversationManager.isInConversation(userId)) {
       await bot.sendMessage(userId, "You already have an active conversation!");
       return;
     }
 
-    // Start new conversation
+    // Start conversation and send welcome message
     conversationManager.startConversation(userId, userInfo);
-
-    // Send welcome message to user
     await bot.sendMessage(userId, createWelcomeMessage(userInfo.firstName));
 
-    // Create notification message
+    // Notify staff members
     const notification = createSalesNotification(userInfo);
-
-    // Send notifications with error handling
-    try {
-      await bot.sendMessage(config.salesId, notification);
-      console.log('Notification sent to sales');
-    } catch (error) {
-      console.error('Error sending notification to sales:', error);
-    }
-
-    try {
-      await bot.sendMessage(config.adminId, notification);
-      console.log('Notification sent to admin');
-    } catch (error) {
-      console.error('Error sending notification to admin:', error);
-    }
+    await Promise.all([
+      bot.sendMessage(config.salesId, notification),
+      bot.sendMessage(config.adminId, notification)
+    ]).catch(error => {
+      console.error('Error sending staff notifications:', error);
+    });
 
   } catch (error) {
     console.error('Error in /start command:', error);
@@ -57,45 +44,23 @@ bot.onText(/\/start/, async (msg) => {
   }
 });
 
-// Handle all messages
+// Message handler
 bot.on('message', async (msg) => {
   if (msg.text === '/start') return;
 
   const userId = msg.from.id.toString();
-  const messageId = msg.message_id;
-
+  
   try {
-    // Handle messages from sales representative
-    if (userId === config.salesId) {
-      if (msg.reply_to_message) {
-        const text = msg.reply_to_message.text;
-        const userIdMatch = text.match(/ID: (\d+)/);
-        if (userIdMatch) {
-          const targetUserId = userIdMatch[1];
-          await bot.copyMessage(targetUserId, msg.chat.id, messageId);
-          await bot.copyMessage(config.adminId, msg.chat.id, messageId);
-          console.log('Message forwarded from sales to user and admin');
-        }
+    // Handle staff messages (sales and admin)
+    if ([config.salesId, config.adminId].includes(userId)) {
+      const targetUserId = MessageForwarder.extractUserIdFromReply(msg);
+      if (targetUserId) {
+        await MessageForwarder.forwardFromStaff(msg, targetUserId);
       }
     }
-    // Handle messages from admin
-    else if (userId === config.adminId) {
-      if (msg.reply_to_message) {
-        const text = msg.reply_to_message.text;
-        const userIdMatch = text.match(/ID: (\d+)/);
-        if (userIdMatch) {
-          const targetUserId = userIdMatch[1];
-          await bot.copyMessage(targetUserId, msg.chat.id, messageId);
-          await bot.copyMessage(config.salesId, msg.chat.id, messageId);
-          console.log('Message forwarded from admin to user and sales');
-        }
-      }
-    }
-    // Handle messages from users
+    // Handle user messages
     else if (conversationManager.isInConversation(userId)) {
-      await bot.copyMessage(config.salesId, msg.chat.id, messageId);
-      await bot.copyMessage(config.adminId, msg.chat.id, messageId);
-      console.log('Message forwarded from user to sales and admin');
+      await MessageForwarder.forwardFromUser(msg, userId);
     } else {
       await bot.sendMessage(userId, "Please start a conversation first by clicking /start");
     }
@@ -110,10 +75,7 @@ bot.on('polling_error', (error) => {
   console.error('Polling error:', error);
 });
 
-// Keep the process alive
 process.on('SIGINT', () => {
   bot.stopPolling();
   process.exit();
 });
-
-console.log('Bot is running...');

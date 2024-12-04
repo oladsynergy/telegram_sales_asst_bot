@@ -1,11 +1,7 @@
 export const createWelcomeMessage = (username) => {
-  return `👋 Welcome ${username}!\n\nThank you for reaching out. You are now connected with our sales team. Your message will be delivered to our sales representative and admin who will assist you shortly.\n\nFeel free to ask any questions!`;
+  return `👋 Welcome ${username}!\n\nYou are now connected with our sales team. Your messages will be delivered instantly to our sales representative and admin.\n\nFeel free to ask any questions!`;
 };
 
 export const createSalesNotification = (userInfo) => {
-  return `🔔 New conversation started!\n\nUser Details:\nName: ${userInfo.firstName}\nUsername: @${userInfo.username}\nID: ${userInfo.userId}\n\nReply to this message to communicate with the user.`;
-};
-
-export const createForwardNotice = (fromId, toId) => {
-  return `Message forwarded from ${fromId} to ${toId}`;
+  return `🔔 New User Connected!\n\nUser Details:\nName: ${userInfo.firstName}\nUsername: @${userInfo.username}\nID: ${userInfo.userId}\n\n📝 Reply to this message to communicate with the user.`;
 };
